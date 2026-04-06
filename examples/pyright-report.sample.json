@@ -1,0 +1,10 @@
+{
+  "generalDiagnostics": [
+    {
+      "severity": "error",
+      "file": "src/pkg/a.py",
+      "message": "Type mismatch"
+    }
+  ]
+}
+

@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Pytest
+        run: python -m pytest -q --tb=short
+
+  guard:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    env:
+      GUARD_SOFT_FAIL: "false" # set to "true" to avoid blocking PR on exit_code=1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Ensure example repo files
+        run: |
+          mkdir -p src/pkg
+          [ -f src/pkg/__init__.py ] || echo "" > src/pkg/__init__.py
+          # Create a scenario where B03 should trigger (H={b,c} but D only declares b)
+          [ -f src/pkg/b.py ] || echo "X = 1" > src/pkg/b.py
+          [ -f src/pkg/c.py ] || echo "Y = 2" > src/pkg/c.py
+          echo "from pkg import b, c\n" > src/pkg/a.py
+          # Plan: impacted_files declares ONLY b (missing c)
+          cat > plan.yaml <<'EOF'
+          plan_version: "0.1"
+          changes:
+            - file: src/pkg/a.py
+              summary: "ci update"
+              impacted_files:
+                - src/pkg/b.py
+          global_analysis:
+            dependency_graph_summary: "a -> b,c"
+          risks_and_rollback:
+            - risk: "r"
+              mitigation: "m"
+          EOF
+          # Override file: allow the missing impact blocker B03
+          cat > override.txt <<'EOF'
+          code-plan-guard: override B03 reason=ci-override
+          EOF
+      - name: Run code-plan-guard
+        run: |
+          set +e
+          code-plan-guard review \
+            --plan plan.yaml \
+            --repo . \
+            --base-ref "HEAD" \
+            --override-file override.txt \
+            --no-cache
+          status=$?
+          if [ "$status" -eq 1 ] && [ "$GUARD_SOFT_FAIL" = "true" ]; then
+            echo "Guard soft-fail enabled: suppressing exit_code=1"
+            status=0
+          fi
+          if [ ! -f .codeguard/audit_overrides.json ]; then
+            echo "Expected override audit not found: .codeguard/audit_overrides.json"
+            status=1
+          fi
+          exit $status
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-plan-guard-artifacts
+          path: |
+            .codeguard/expected_impact.json
+            .codeguard/reconciliation_report.json
+            .codeguard/guard_report.md
+            .codeguard/audit_overrides.json
+          if-no-files-found: ignore
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f .codeguard/guard_report.md ]; then
+            echo "## code-plan-guard summary" >> $GITHUB_STEP_SUMMARY
+            cat .codeguard/guard_report.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No guard report generated." >> $GITHUB_STEP_SUMMARY
+          fi

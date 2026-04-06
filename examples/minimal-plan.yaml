@@ -1,0 +1,12 @@
+# 最小合法计划示例（PRD §6.4）
+plan_version: "0.1"
+changes:
+  - file: src/pkg/a.py
+    summary: "示例变更"
+    impacted_files:
+      - src/pkg/b.py
+global_analysis:
+  dependency_graph_summary: "a -> b"
+risks_and_rollback:
+  - risk: "无"
+    mitigation: "按需补充测试"

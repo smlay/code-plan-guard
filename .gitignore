@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.codeguard/
+*.pkl
+
+# Local scratch / PR simulation artifacts
+plan.yaml
+override.txt
+_guard_pr_sim_*/
+
+# CI smoke-test sample package (generated locally / in CI)
+src/pkg/
+
+# Docs that are internal-only (do not publish to GitHub)
+docs/REQUIREMENTS.md
+docs/DEVELOPMENT_CHECKLIST*.md
+docs/prd_traceability.md

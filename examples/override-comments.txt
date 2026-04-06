@@ -1,0 +1,2 @@
+code-plan-guard: override B03 reason=reviewed_by_human_and_approved
+

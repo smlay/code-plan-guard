@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-plan-guard"
+version = "0.2.0"
+description = "Plan-stage integrity guard: schema + static import truth + reconciliation for AI coding plans"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "code-plan-guard contributors" }]
+keywords = ["ai", "lint", "plan", "static-analysis", "python"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+  "click>=8.1",
+  "pydantic>=2.5",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+code-plan-guard = "code_plan_guard.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/your-org/code-plan-guard"
+Documentation = "https://github.com/your-org/code-plan-guard#readme"
+Issues = "https://github.com/your-org/code-plan-guard/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

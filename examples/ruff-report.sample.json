@@ -1,0 +1,8 @@
+[
+  {
+    "code": "F401",
+    "filename": "src/pkg/a.py",
+    "message": "unused import"
+  }
+]
+
