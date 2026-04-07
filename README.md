@@ -1,49 +1,71 @@
 # code-plan-guard
 
-轻量、**确定性优先**的计划阶段完整性门卫：对 AI/人写的**变更计划**做 Schema 校验、静态 import **真值**（`expected_impact.json`）与 **1-hop 对账**（B01–B04），默认不把 LLM 作为 blocker 依据。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-详细需求见 [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)（PRD v1.8）。
+Plan-stage Integrity Guard for AI-generated (or human-written) change plans.
+It enforces **deterministic** checks *before* code execution:
 
-## 诚实边界（请务必阅读）
+- Plan schema validation
+- Static import “ground truth” (`expected_impact.json`)
+- Reconciliation between declared impact and inferred impact
 
-1. **不替代 PR review**：通过本工具仍可能出现业务或架构层面的错误。  
-2. **静态 AST + import**：**不保证**动态导入、`importlib`、字符串加载等。  
-3. **非 `.py` 变更项**：仍检查路径存在性（B02），**不参与** 1-hop 分析。  
-4. **LLM 审查**（若未来启用）：仅可作为 warning，**不得**作为 B01–B04 的依据。  
-5. **规则可豁免**：可通过 `.codeguard.yml` 调整阈值与豁免路径。
+This project intentionally **does not** rely on LLM output as a blocker signal.
 
-### 已知限制（import 解析 v0.4）
+## Table of contents
 
-- `if typing.TYPE_CHECKING:`（非裸名 `TYPE_CHECKING`）**不会**自动跳过块内 import。  
-- `if 0:` 等非常量 `False` 的死分支**不**自动识别。  
-- `new_deps` / `removed_deps` 在计划中仅为**文档字段**，格式约定为 **PEP 508** 字符串列表（不参与对账）。
+- [Why](#why)
+- [What it does](#what-it-does)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Artifacts](#artifacts)
+- [Configuration](#configuration)
+- [Version highlights](#version-highlights)
+- [Honest boundaries](#honest-boundaries)
+- [Development](#development)
+- [License](#license)
 
-## 安装
+## Why
+
+AI coding assistants can create technical debt by skipping impact analysis.
+`code-plan-guard` adds a **plan-stage gate** so “what will be impacted” is explicit,
+auditable, and consistently enforced.
+
+## What it does
+
+Given a plan file (YAML/JSON) describing intended changes, the guard:
+
+- Validates the plan shape and required fields (schema)
+- Builds static dependency truth for Python imports (and optional language truth)
+- Reconciles inferred 1-hop (or multi-hop) impact vs declared impacted files
+- Writes machine-readable artifacts for CI, reporting, and auditing
+
+## Install
+
+Requires **Python 3.10+**.
 
 ```bash
-pip install -e ".[dev]"   # 开发
-# 或发布后: pip install code-plan-guard
+# development
+pip install -e ".[dev]"
+
+# (after publishing) pip install code-plan-guard
 ```
 
-需要 **Python 3.10+**。
-
-## 用法
+## Quick start
 
 ```bash
 code-plan-guard review --plan path/to/plan.yaml --repo .
 ```
 
-常用参数：
+Common options:
 
-- `--out-dir`、`--config`、`--intent`
-- `--base-ref`（v0.2 增量范围参与分析）
+- `--out-dir`, `--config`, `--intent`
+- `--base-ref` (incremental scope based on git diff)
 - `--no-cache`
-- `--override-file`（v0.2，本地模拟 PR override）
-- `--override-from-github`（v0.4，可选，从 PR body/comments/review comments 拉取 override）
-- `--ruff-report`、`--pyright-report`（v0.2 外部信号）
-- `--json`（v0.2 机器可读输出）
-- `--plan auto`（v0.4，自动发现 plan；支持 PR body 的 `plan:` 指针）
-- `--plan-source`、`--dump-context`（v0.4 调试）
+- `--override-file` (local override simulation)
+- `--override-from-github` (optional: pull overrides from PR body/comments; requires `gh` + token)
+- `--ruff-report`, `--pyright-report`, `--mypy-report`, `--semgrep-report` (warning-only signals)
+- `--json` (machine-readable CLI output)
+- `--plan auto` (auto-discover plan path in CI/PR)
 
 ### Python API
 
@@ -58,46 +80,71 @@ r = validate_plan(
     base_ref="main",
 )
 print(r.exit_code, r.ok, r.blocker_ids)
-print(r.overrides, len(r.external_signals))
 ```
 
-## 产物
+## Artifacts
 
-默认写入 `<repo>/.codeguard/`：
+By default artifacts are written to `<repo>/.codeguard/`:
 
-- `expected_impact.json` — 静态分析真值  
-- `reconciliation_report.json` — 对账明细（含 `overrides` / `external_signals`）  
-- `guard_report.md` — 人类可读摘要  
-- `audit_overrides.json` — override 审计（如有）
+- `expected_impact.json` — static analysis ground truth
+- `reconciliation_report.json` — reconciliation details + warnings + context
+- `guard_report.md` — human-readable summary
+- `signals.json` — external tool signals (optional)
+- `audit_overrides.json` — override audit trail (optional)
 
-## v0.4 新增能力速览
+## Configuration
 
-- Plan 自动发现 v2：`--plan auto` + PR body `plan:` 指针
-- override 来源扩展：issue comments + review comments + fenced override block
-- override 策略：allowed actors/teams、required labels、sha 绑定、最小复核人数
-- 新规则：B07（验证步骤缺失，可配置 warning/block）、B06 循环检测可选扩展 1-hop
-- 性能/缓存：阈值可配置、cache hit/miss 可观测
-- 多语言：启发式增强 + tree-sitter（可选，缺依赖自动降级）
+Place `.codeguard.yml` or `.code-plan-guard.yml` at repo root.
+Unknown keys are ignored by design (forward compatibility).
 
-## 配置
+Useful docs:
 
-项目根目录放置 `.codeguard.yml` 或 `.code-plan-guard.yml`，示例见 PRD **附录 A**。  
-override 规则见 [docs/OVERRIDE_POLICY.md](docs/OVERRIDE_POLICY.md)。
+- `docs/INTEGRATION.md` (CI + local git hooks)
+- `docs/PLAN_CONVENTIONS.md` (plan naming + auto-discovery)
+- `docs/OVERRIDE_POLICY_v0_4.md` (override governance)
+- `docs/SCHEMA_POLICY.md` (artifact schema versioning)
 
-配置中的未知字段在当前实现中默认**忽略**（前向兼容策略），不会导致失败。
+## Version highlights
 
-## 开发
+For the complete list, see [`CHANGELOG.md`](CHANGELOG.md).
+
+### 0.4.0 (2026-04-06)
+
+- Plan discovery v2: `--plan auto` + PR body `plan:` pointer
+- Richer GitHub runtime context in `reconciliation_report.json`
+- Override governance: actors/teams, label gate, SHA binding, N-of-M reviewers (best-effort)
+- New/expanded rules: cycles (optional 1-hop expansion), verification steps quality rule (configurable)
+- Performance thresholds + deterministic degradation
+- Experimental language truth (JS/TS heuristic + optional tree-sitter fallback)
+
+### 0.3.0 (2026-04-06)
+
+- GitHub override ingestion (PR body/comments) + richer audit payloads
+- `context` field in `reconciliation_report.json`
+- Cycle detection rule (configurable severity)
+- Experimental multi-language scan (warning-only)
+
+### 0.2.0 (2026-04-06)
+
+- GitHub Actions integration example
+- Human overrides + `audit_overrides.json`
+- `--base-ref` incremental analysis
+- External tool signals: ruff / pyright (warning-only)
+- Optional LLM review hook (warning-only)
+
+## Honest boundaries
+
+- **Not a replacement for PR review**: passing the guard does not guarantee architectural correctness.
+- **Static analysis**: dynamic imports / `importlib` / string loading are best-effort.
+- **Non-Python change items**: path existence is checked, but Python import truth is only for `.py`.
+- **LLM (if enabled)**: warnings only; must never become a blocker signal.
+
+## Development
 
 ```bash
-pytest -q
+python -m pytest -q
 ```
 
-PRD 决策点与测试登记见 [docs/prd_traceability.md](docs/prd_traceability.md)。
+## License
 
-## 许可证
-
-MIT，见 [LICENSE](LICENSE)。
-
-## 发布前
-
-请自行复查 [PyPI](https://pypi.org/project/code-plan-guard/) 与 GitHub 上包名是否可用。
+MIT. See [`LICENSE`](LICENSE).
