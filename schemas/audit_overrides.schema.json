@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/code-plan-guard/schemas/audit_overrides.schema.json",
+  "title": "code-plan-guard audit_overrides.json",
+  "type": "object",
+  "required": ["schema_version", "actor", "timestamp", "commit_sha", "plan_hash", "overrides"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "actor": { "type": "string" },
+    "timestamp": { "type": "string" },
+    "commit_sha": { "type": "string" },
+    "plan_hash": { "type": "string" },
+    "blockers_before": { "type": "array", "items": { "type": "string" } },
+    "blockers_after": { "type": "array", "items": { "type": "string" } },
+    "directives": { "type": "array", "items": { "type": "object" } },
+    "overrides": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}
+

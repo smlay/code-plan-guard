@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# code-plan-guard pre-commit hook template
+#
+# Usage:
+#   1) copy to .git/hooks/pre-commit (or use core.hooksPath)
+#   2) ensure executable: chmod +x .git/hooks/pre-commit
+#
+# Behavior:
+#   - runs code-plan-guard review before commit
+#   - set GUARD_SOFT_FAIL=true to allow commit (warning-only)
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+PLAN_PATH="${CODE_PLAN_GUARD_PLAN:-auto}"
+OUT_DIR="${CODE_PLAN_GUARD_OUT_DIR:-.codeguard}"
+
+set +e
+code-plan-guard review --plan "$PLAN_PATH" --repo . --out-dir "$OUT_DIR" --no-cache
+status=$?
+set -e
+
+if [ "${GUARD_SOFT_FAIL:-false}" = "true" ] && [ "$status" -eq 1 ]; then
+  echo "Guard soft-fail enabled: allowing commit (exit_code=1 suppressed)."
+  exit 0
+fi
+
+if [ "$status" -ne 0 ]; then
+  echo "Guard blocked commit (exit_code=$status). See $OUT_DIR/guard_report.md"
+fi
+exit "$status"
+

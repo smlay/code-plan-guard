@@ -36,6 +36,7 @@ class ValidationResult:
     overrides: list[dict[str, Any]] = field(default_factory=list)
     external_signals: list[dict[str, Any]] = field(default_factory=list)
     llm_warnings: list[dict[str, Any]] = field(default_factory=list)
+    context: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
     def fatal(message: str, kind: str) -> ValidationResult:
@@ -47,6 +48,7 @@ class ValidationResult:
             warnings=[],
             artifacts_paths={},
             summary={},
+            context={},
             fatal_message=message,
             error_kind=kind,
             overrides=[],

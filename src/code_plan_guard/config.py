@@ -29,6 +29,9 @@ class GuardConfig:
     exemption_paths: list[str] = field(default_factory=list)
     cache_enabled: bool = True
     cache_dir: str = "~/.codeguard/cache"
+    perf_max_changed_files: int = 200
+    perf_max_file_bytes: int = 2_000_000
+    perf_max_edges: int = 20000
     llm_review_enabled: bool = False
     llm_review_provider: str = "none"
     llm_review_model: str = ""
@@ -40,6 +43,20 @@ class GuardConfig:
     integrations_pyright_enabled: bool = False
     integrations_pyright_report_path: str = ""
     strict_plan_diff: bool = False
+    github_override_enabled: bool = False
+    github_override_allowed_actors: list[str] = field(default_factory=list)
+    override_min_reason_length: int = 8
+    github_override_required_labels: list[str] = field(default_factory=list)
+    github_override_allowed_teams: list[str] = field(default_factory=list)  # ["org:team"]
+    github_override_min_approvers: int = 1
+    cycles_enabled: bool = False
+    cycles_severity: str = "warning"  # warning | block
+    cycles_expand_one_hop: bool = False
+    cycles_max_extra_files: int = 25
+    languages_enabled: bool = False
+    tree_sitter_enabled: bool = False
+    plan_quality_enabled: bool = False
+    plan_quality_severity: str = "warning"  # warning | block
 
     def resolved_cache_dir(self) -> Path:
         return Path(os.path.expanduser(self.cache_dir))
@@ -85,6 +102,24 @@ def load_config_dict(raw: dict[str, Any]) -> GuardConfig:
             cfg.max_class_lines = int(style.get("max_class_lines", cfg.max_class_lines))
             cfg.count_docstrings = bool(style.get("count_docstrings", cfg.count_docstrings))
             cfg.style_severity = str(style.get("severity", cfg.style_severity))
+        cycles = rules.get("cycles") or {}
+        if isinstance(cycles, dict):
+            cfg.cycles_enabled = bool(cycles.get("enabled", cfg.cycles_enabled))
+            cfg.cycles_severity = str(cycles.get("severity", cfg.cycles_severity))
+            cfg.cycles_expand_one_hop = bool(
+                cycles.get("expand_one_hop", cfg.cycles_expand_one_hop)
+            )
+            cfg.cycles_max_extra_files = int(
+                cycles.get("max_extra_files", cfg.cycles_max_extra_files)
+            )
+        pq = rules.get("plan_quality") or {}
+        if isinstance(pq, dict):
+            cfg.plan_quality_enabled = bool(pq.get("enabled", cfg.plan_quality_enabled))
+            cfg.plan_quality_severity = str(pq.get("severity", cfg.plan_quality_severity))
+        langs = rules.get("languages") or {}
+        if isinstance(langs, dict):
+            cfg.languages_enabled = bool(langs.get("enabled", cfg.languages_enabled))
+            cfg.tree_sitter_enabled = bool(langs.get("tree_sitter", cfg.tree_sitter_enabled))
     ex = raw.get("exemptions") or {}
     if isinstance(ex, dict) and "paths" in ex:
         cfg.exemption_paths = list(ex.get("paths") or [])
@@ -93,6 +128,11 @@ def load_config_dict(raw: dict[str, Any]) -> GuardConfig:
         cfg.cache_enabled = bool(cache.get("enabled", cfg.cache_enabled))
         if "dir" in cache:
             cfg.cache_dir = str(cache["dir"])
+    perf = raw.get("performance") or {}
+    if isinstance(perf, dict):
+        cfg.perf_max_changed_files = int(perf.get("max_changed_files", cfg.perf_max_changed_files))
+        cfg.perf_max_file_bytes = int(perf.get("max_file_bytes", cfg.perf_max_file_bytes))
+        cfg.perf_max_edges = int(perf.get("max_edges", cfg.perf_max_edges))
     llm = raw.get("llm_review") or {}
     if isinstance(llm, dict):
         cfg.llm_review_enabled = bool(llm.get("enabled", cfg.llm_review_enabled))
@@ -106,6 +146,16 @@ def load_config_dict(raw: dict[str, Any]) -> GuardConfig:
     gh = raw.get("github") or {}
     if isinstance(gh, dict):
         cfg.github_plan_path = str(gh.get("plan_path", cfg.github_plan_path))
+        cfg.github_override_enabled = bool(gh.get("override_enabled", cfg.github_override_enabled))
+        cfg.github_override_allowed_actors = list(gh.get("override_allowed_actors") or [])
+        cfg.override_min_reason_length = int(
+            gh.get("override_min_reason_length", cfg.override_min_reason_length)
+        )
+        cfg.github_override_required_labels = list(gh.get("override_required_labels") or [])
+        cfg.github_override_allowed_teams = list(gh.get("override_allowed_teams") or [])
+        cfg.github_override_min_approvers = int(
+            gh.get("override_min_approvers", cfg.github_override_min_approvers)
+        )
     integ = raw.get("integrations") or {}
     if isinstance(integ, dict):
         ruff = integ.get("ruff") or {}
@@ -166,6 +216,19 @@ def config_for_cache_hash(cfg: GuardConfig) -> str:
             "count_docstrings": cfg.count_docstrings,
             "severity": cfg.style_severity,
         },
+        "cycles": {
+            "enabled": cfg.cycles_enabled,
+            "severity": cfg.cycles_severity,
+            "expand_one_hop": cfg.cycles_expand_one_hop,
+            "max_extra_files": cfg.cycles_max_extra_files,
+        },
+        "plan_quality": {"enabled": cfg.plan_quality_enabled, "severity": cfg.plan_quality_severity},
+        "languages": {"enabled": cfg.languages_enabled, "tree_sitter": cfg.tree_sitter_enabled},
+        "performance": {
+            "max_changed_files": cfg.perf_max_changed_files,
+            "max_file_bytes": cfg.perf_max_file_bytes,
+            "max_edges": cfg.perf_max_edges,
+        },
         "exemptions": cfg.exemption_paths,
         "override": {
             "enabled": cfg.override_enabled,
@@ -182,5 +245,13 @@ def config_for_cache_hash(cfg: GuardConfig) -> str:
             },
         },
         "plan_scope": {"strict_diff": cfg.strict_plan_diff},
+        "github": {"override_enabled": cfg.github_override_enabled, "plan_path": cfg.github_plan_path},
+        "override_policy": {
+            "allowed_actors": cfg.github_override_allowed_actors,
+            "allowed_teams": cfg.github_override_allowed_teams,
+            "min_reason_length": cfg.override_min_reason_length,
+            "required_labels": cfg.github_override_required_labels,
+            "min_approvers": cfg.github_override_min_approvers,
+        },
     }
     return yaml.dump(d, sort_keys=True)

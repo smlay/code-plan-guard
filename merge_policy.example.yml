@@ -1,0 +1,8 @@
+version: "1"
+
+# Which warnings should be treated as failing (optional).
+# This file is NOT enforced by default; integrations may read it.
+fail_on_warnings:
+  - W_PLAN_QUALITY
+  - W_CYCLE_DETECTED
+

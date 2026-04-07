@@ -8,4 +8,5 @@ def test_ci_contains_guard_job() -> None:
     text = wf.read_text(encoding="utf-8")
     assert "guard:" in text
     assert "code-plan-guard review" in text
+    assert "--plan auto" in text
     assert "upload-artifact" in text

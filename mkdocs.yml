@@ -1,0 +1,33 @@
+site_name: code-plan-guard
+site_description: Plan-stage integrity guard for AI coding plans
+repo_url: https://github.com/your-org/code-plan-guard
+repo_name: your-org/code-plan-guard
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+
+nav:
+  - 首页: index.md
+  - PRD: REQUIREMENTS.md
+  - 集成:
+      - INTEGRATION.md
+      - CI_GITLAB.md
+      - CI_JENKINS.md
+  - 计划约定: PLAN_CONVENTIONS.md
+  - Override 策略: OVERRIDE_POLICY_v0_4.md
+  - Schema 策略: SCHEMA_POLICY.md
+  - 开发清单:
+      - DEVELOPMENT_CHECKLIST_v0_1.md
+      - DEVELOPMENT_CHECKLIST_v0_2.md
+      - DEVELOPMENT_CHECKLIST_v0_3.md
+      - DEVELOPMENT_CHECKLIST_v0_4.md
+      - DEVELOPMENT_CHECKLIST_FINAL.md

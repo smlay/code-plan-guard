@@ -27,6 +27,7 @@ def write_reconciliation_report(
     warnings: list[WarningItem],
     edges: list[dict[str, Any]],
     summary: dict[str, int],
+    context: dict[str, Any] | None = None,
     config_hash: str | None = None,
     overrides: list[dict[str, Any]] | None = None,
     external_signals: list[dict[str, Any]] | None = None,
@@ -43,6 +44,8 @@ def write_reconciliation_report(
         "edges": edges,
         "summary": summary,
     }
+    if context is not None:
+        payload["context"] = context
     if config_hash:
         payload["config_snapshot_hash"] = config_hash
     if overrides is not None:
@@ -53,6 +56,12 @@ def write_reconciliation_report(
         payload["llm_warnings"] = [
             asdict(x) if hasattr(x, "__dataclass_fields__") else x for x in llm_warnings
         ]
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def write_signals_json(path: Path, signals: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"schema_version": "0.1", "signals": signals}
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 

@@ -136,3 +136,4 @@ def test_reconciliation_report_has_v02_fields(tmp_repo: Path) -> None:
     assert "overrides" in report
     assert "external_signals" in report
     assert "llm_warnings" in report
+    assert "context" in report

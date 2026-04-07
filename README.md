@@ -12,7 +12,7 @@
 4. **LLM 审查**（若未来启用）：仅可作为 warning，**不得**作为 B01–B04 的依据。  
 5. **规则可豁免**：可通过 `.codeguard.yml` 调整阈值与豁免路径。
 
-### 已知限制（import 解析 v0.2）
+### 已知限制（import 解析 v0.4）
 
 - `if typing.TYPE_CHECKING:`（非裸名 `TYPE_CHECKING`）**不会**自动跳过块内 import。  
 - `if 0:` 等非常量 `False` 的死分支**不**自动识别。  
@@ -39,8 +39,11 @@ code-plan-guard review --plan path/to/plan.yaml --repo .
 - `--base-ref`（v0.2 增量范围参与分析）
 - `--no-cache`
 - `--override-file`（v0.2，本地模拟 PR override）
+- `--override-from-github`（v0.4，可选，从 PR body/comments/review comments 拉取 override）
 - `--ruff-report`、`--pyright-report`（v0.2 外部信号）
 - `--json`（v0.2 机器可读输出）
+- `--plan auto`（v0.4，自动发现 plan；支持 PR body 的 `plan:` 指针）
+- `--plan-source`、`--dump-context`（v0.4 调试）
 
 ### Python API
 
@@ -66,6 +69,15 @@ print(r.overrides, len(r.external_signals))
 - `reconciliation_report.json` — 对账明细（含 `overrides` / `external_signals`）  
 - `guard_report.md` — 人类可读摘要  
 - `audit_overrides.json` — override 审计（如有）
+
+## v0.4 新增能力速览
+
+- Plan 自动发现 v2：`--plan auto` + PR body `plan:` 指针
+- override 来源扩展：issue comments + review comments + fenced override block
+- override 策略：allowed actors/teams、required labels、sha 绑定、最小复核人数
+- 新规则：B07（验证步骤缺失，可配置 warning/block）、B06 循环检测可选扩展 1-hop
+- 性能/缓存：阈值可配置、cache hit/miss 可观测
+- 多语言：启发式增强 + tree-sitter（可选，缺依赖自动降级）
 
 ## 配置
 

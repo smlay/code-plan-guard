@@ -44,7 +44,8 @@ jobs:
           [ -f src/pkg/c.py ] || echo "Y = 2" > src/pkg/c.py
           echo "from pkg import b, c\n" > src/pkg/a.py
           # Plan: impacted_files declares ONLY b (missing c)
-          cat > plan.yaml <<'EOF'
+          mkdir -p .codeguard
+          cat > .codeguard/plan.yaml <<'EOF'
           plan_version: "0.1"
           changes:
             - file: src/pkg/a.py
@@ -65,10 +66,11 @@ jobs:
         run: |
           set +e
           code-plan-guard review \
-            --plan plan.yaml \
+            --plan auto \
             --repo . \
             --base-ref "HEAD" \
             --override-file override.txt \
+            --print-artifacts-paths \
             --no-cache
           status=$?
           if [ "$status" -eq 1 ] && [ "$GUARD_SOFT_FAIL" = "true" ]; then
@@ -94,9 +96,30 @@ jobs:
       - name: Job summary
         if: always()
         run: |
+          echo "## code-plan-guard summary" >> $GITHUB_STEP_SUMMARY
+          if [ -f .codeguard/reconciliation_report.json ]; then
+            python - <<'PY' >> $GITHUB_STEP_SUMMARY
+          import json
+          p = ".codeguard/reconciliation_report.json"
+          data = json.load(open(p, encoding="utf-8"))
+          blockers = data.get("blockers", [])
+          warnings = data.get("warnings", [])
+          print(f"- blockers: {len(blockers)}")
+          print(f"- warnings: {len(warnings)}")
+          if blockers:
+            print("\n### Top blockers")
+            for b in blockers[:5]:
+              print(f"- **{b.get('id')}** {b.get('message')}")
+          if warnings:
+            print("\n### Top warnings")
+            for w in warnings[:5]:
+              print(f"- ({w.get('code')}) {w.get('message')}")
+          print("\n### Artifacts")
+          for k in ["expected_impact.json","reconciliation_report.json","guard_report.md","audit_overrides.json"]:
+            print(f"- `.codeguard/{k}`")
+          PY
+          fi
           if [ -f .codeguard/guard_report.md ]; then
-            echo "## code-plan-guard summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
             cat .codeguard/guard_report.md >> $GITHUB_STEP_SUMMARY
-          else
-            echo "No guard report generated." >> $GITHUB_STEP_SUMMARY
           fi

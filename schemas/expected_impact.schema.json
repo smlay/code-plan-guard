@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/code-plan-guard/schemas/expected_impact.schema.json",
+  "title": "code-plan-guard expected_impact.json",
+  "type": "object",
+  "required": ["schema_version", "changed_files", "per_file", "aggregated_one_hop", "stats"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "changed_files": { "type": "array", "items": { "type": "string" } },
+    "normalization": { "type": "string" },
+    "per_file": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "one_hop_targets": { "type": "array", "items": { "type": "string" } },
+          "unresolved_imports": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      }
+    },
+    "aggregated_one_hop": { "type": "array", "items": { "type": "string" } },
+    "stats": {
+      "type": "object",
+      "properties": {
+        "edge_count": { "type": "integer" },
+        "unresolved_count": { "type": "integer" },
+        "changed_py_count": { "type": "integer" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
+

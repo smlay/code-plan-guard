@@ -70,3 +70,25 @@ def test_write_artifacts(tmp_repo: Path) -> None:
     assert (out / "reconciliation_report.json").is_file()
     assert (out / "guard_report.md").is_file()
     assert r.exit_code == 0
+
+
+def test_plan_auto_discovers_examples_when_present(tmp_path: Path) -> None:
+    # repo with examples/minimal-plan.yaml present should be discovered by --plan auto
+    (tmp_path / "examples").mkdir(parents=True)
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    (tmp_path / "src" / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "src" / "pkg" / "a.py").write_text("from pkg import b\n", encoding="utf-8")
+    (tmp_path / "src" / "pkg" / "b.py").write_text("X = 1\n", encoding="utf-8")
+    (tmp_path / "examples" / "minimal-plan.yaml").write_text(
+        'plan_version: "0.1"\n'
+        "changes:\n"
+        "  - file: src/pkg/a.py\n"
+        "    summary: s\n"
+        "    impacted_files:\n"
+        "      - src/pkg/b.py\n"
+        "global_analysis: {}\n"
+        "risks_and_rollback:\n  - risk: r\n    mitigation: m\n",
+        encoding="utf-8",
+    )
+    r = validate_plan("auto", tmp_path, write_artifacts=False, no_cache=True)
+    assert r.exit_code == 0, r.blockers

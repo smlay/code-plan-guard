@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +100,50 @@ def analyze_py_file(
     warnings: list[dict[str, Any]] = []
     edges: list[tuple[str, str]] = []
     unresolved: list[str] = []
+
+    # File-level cache (best-effort). Key includes file content + config-relevant flags.
+    cache_path: Path | None = None
+    if cfg.cache_enabled:
+        try:
+            data = path.read_bytes()
+            fp = hashlib.sha256(data).hexdigest()
+            cblob = json.dumps(
+                {
+                    "file": file_rel,
+                    "fp": fp,
+                    "src_roots": cfg.src_roots,
+                    "skip_false": cfg.skip_imports_in_false_branch,
+                    "skip_tc": cfg.skip_imports_in_type_checking_if,
+                },
+                sort_keys=True,
+            )
+            key = hashlib.sha256(cblob.encode()).hexdigest()
+            cache_path = cfg.resolved_cache_dir() / "file" / f"{key}.json"
+            if cache_path.is_file():
+                raw = json.loads(cache_path.read_text(encoding="utf-8"))
+                e = [tuple(x) for x in raw.get("edges", [])]
+                u = list(raw.get("unresolved", []))
+                w = list(raw.get("warnings", []))
+                return e, u, w
+        except Exception:
+            cache_path = None
+
+    try:
+        if path.is_file() and path.stat().st_size > cfg.perf_max_file_bytes:
+            warnings.append(
+                {
+                    "code": "W_FILE_TOO_LARGE_SKIPPED",
+                    "message": f"文件过大已跳过 AST 解析：{file_rel}",
+                    "details": {
+                        "file": file_rel,
+                        "size_bytes": path.stat().st_size,
+                        "max_file_bytes": cfg.perf_max_file_bytes,
+                    },
+                }
+            )
+            return edges, unresolved, warnings
+    except OSError:
+        pass
 
     try:
         source = path.read_text(encoding="utf-8")
@@ -200,6 +248,26 @@ def analyze_py_file(
             }
         )
 
+    if cache_path is not None:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "0.1",
+                        "edges": [list(x) for x in edges],
+                        "unresolved": sorted(set(unresolved)),
+                        "warnings": warnings,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
     return edges, unresolved, warnings
 
 
@@ -214,13 +282,109 @@ def build_expected_impact(
     all_warn: list[dict[str, Any]] = []
     aggregated: set[str] = set()
 
-    for rel in sorted(changed_py_files):
-        edges, unres, w = analyze_py_file(repo, rel, cfg)
+    rels = sorted(changed_py_files)
+    results: dict[str, tuple[list[tuple[str, str]], list[str], list[dict[str, Any]]]] = {}
+
+    def _analyze_many(files: list[str]) -> None:
+        if not files:
+            return
+        max_workers = min(32, (os.cpu_count() or 4) + 4)
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futs = {ex.submit(analyze_py_file, repo, rel, cfg): rel for rel in files}
+            for fut in as_completed(futs):
+                rel = futs[fut]
+                results[rel] = fut.result()
+
+    _analyze_many(rels)
+
+    # Deterministic aggregation + perf edge cap
+    edge_cap = int(cfg.perf_max_edges)
+    analyzed: list[str] = []
+    for rel in rels:
+        edges, unres, w = results.get(rel, ([], [], []))
         all_warn.extend(w)
         targets = sorted({t for _f, t in edges})
         per_file[rel] = {"one_hop_targets": targets, "unresolved_imports": sorted(set(unres))}
+        if edge_cap > 0 and (len(all_edges) + len(edges)) > edge_cap:
+            all_warn.append(
+                {
+                    "code": "W_TOO_MANY_EDGES",
+                    "message": "边数量超过阈值，已截断后续边（确定性）。",
+                    "details": {"max_edges": edge_cap},
+                }
+            )
+            remain = max(0, edge_cap - len(all_edges))
+            all_edges.extend(edges[:remain])
+            aggregated.update({t for _f, t in edges[:remain]})
+            break
         all_edges.extend(edges)
         aggregated.update(targets)
+        analyzed.append(rel)
+
+    # Optional hop expansion (>1): adds edges for additional analyzed files.
+    hop_depth = max(1, int(getattr(cfg, "hop_depth", 1) or 1))
+    if hop_depth > 1:
+        # Only expand to python files under repo; deterministic frontier.
+        seen_files = set(analyzed)
+        frontier: list[str] = sorted({t for t in aggregated if t.endswith(".py") and t not in seen_files})
+        max_files = int(cfg.perf_max_changed_files) if int(cfg.perf_max_changed_files) > 0 else 200
+
+        cur_depth = 1
+        aggregated_multi: set[str] = set(aggregated)
+        while cur_depth < hop_depth and frontier:
+            # bound analysis set deterministically
+            remaining_budget = max(0, max_files - len(seen_files))
+            if remaining_budget <= 0:
+                all_warn.append(
+                    {
+                        "code": "W_HOP_DEPTH_DEGRADED",
+                        "message": "hop_depth 扩展已降级：分析文件数量超过阈值。",
+                        "details": {"hop_depth": hop_depth, "max_files": max_files},
+                    }
+                )
+                break
+            batch = frontier[:remaining_budget]
+            _analyze_many(batch)
+
+            next_frontier: set[str] = set()
+            for rel in batch:
+                seen_files.add(rel)
+                edges, unres, w = results.get(rel, ([], [], []))
+                all_warn.extend(w)
+                targets = sorted({t for _f, t in edges})
+                per_file.setdefault(rel, {"one_hop_targets": [], "unresolved_imports": []})
+                per_file[rel]["one_hop_targets"] = sorted(set(per_file[rel]["one_hop_targets"]) | set(targets))
+                per_file[rel]["unresolved_imports"] = sorted(
+                    set(per_file[rel]["unresolved_imports"]) | set(unres)
+                )
+
+                # edge cap still applies
+                if edge_cap > 0 and (len(all_edges) + len(edges)) > edge_cap:
+                    all_warn.append(
+                        {
+                            "code": "W_TOO_MANY_EDGES",
+                            "message": "边数量超过阈值，已截断后续边（确定性）。",
+                            "details": {"max_edges": edge_cap},
+                        }
+                    )
+                    remain = max(0, edge_cap - len(all_edges))
+                    all_edges.extend(edges[:remain])
+                    aggregated_multi.update({t for _f, t in edges[:remain]})
+                    frontier = []
+                    break
+                all_edges.extend(edges)
+                aggregated_multi.update(targets)
+                for t in targets:
+                    if t.endswith(".py") and t not in seen_files:
+                        next_frontier.add(t)
+
+            if not frontier:
+                # may have been truncated by edge cap
+                break
+            frontier = sorted(next_frontier)
+            cur_depth += 1
+
+        aggregated = aggregated_multi
 
     edge_count = len(all_edges)
     unresolved_count = sum(len(per_file[f]["unresolved_imports"]) for f in per_file)
@@ -230,6 +394,7 @@ def build_expected_impact(
         "normalization": "posix_relative_under_repo",
         "per_file": per_file,
         "aggregated_one_hop": sorted(aggregated),
+        "analysis": {"hop_depth": hop_depth, "analyzed_files": sorted(set(per_file.keys()))},
         "stats": {
             "edge_count": edge_count,
             "unresolved_count": unresolved_count,

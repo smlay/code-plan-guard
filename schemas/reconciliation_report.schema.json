@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/code-plan-guard/schemas/reconciliation_report.schema.json",
+  "title": "code-plan-guard reconciliation_report.json",
+  "type": "object",
+  "required": ["schema_version", "tool_version", "plan_version", "blocker_ids", "warnings", "blockers", "edges", "summary"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "tool_version": { "type": "string" },
+    "plan_version": { "type": "string" },
+    "blocker_ids": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "object" }, "additionalItems": true },
+    "blockers": { "type": "array", "items": { "type": "object" }, "additionalItems": true },
+    "edges": { "type": "array", "items": { "type": "object" } },
+    "summary": { "type": "object", "additionalProperties": true },
+    "context": { "type": "object", "additionalProperties": true },
+    "config_snapshot_hash": { "type": "string" },
+    "overrides": { "type": "array", "items": { "type": "object" } },
+    "external_signals": { "type": "array", "items": { "type": "object" } },
+    "llm_warnings": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}
+
